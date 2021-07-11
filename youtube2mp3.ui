@@ -199,12 +199,22 @@
               <height>25</height>
              </size>
             </property>
+            <property name="font">
+             <font>
+              <family>MS Shell Dlg 2</family>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
+            </property>
             <property name="text">
              <string>Download!</string>
             </property>
             <property name="icon">
              <iconset>
-              <normaloff>Images/icon.svg</normaloff>Images/icon.svg</iconset>
+              <normaloff>Images/download-cloud-flat.png</normaloff>Images/download-cloud-flat.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -298,6 +308,9 @@
               <width>300</width>
               <height>0</height>
              </size>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignJustify|Qt::AlignVCenter</set>
             </property>
             <property name="readOnly">
              <bool>true</bool>

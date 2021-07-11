@@ -1,4 +1,5 @@
-from logging import setLoggerClass
+#from logging import setLoggerClass
+from logging import fatal
 import os
 import subprocess
 from pytube import YouTube
@@ -8,7 +9,10 @@ import sys
 from requests import get
 import time
 from shutil import move
+from moviepy.editor import AudioFileClip
+from PIL import Image
 
+#import singleDowloadEngine as downEngine
 #from PyQt5 import QtWidgets, uic, QPixmap
 
 #from PyQt5 import QtCore, QtGui, QtWidgets, uic
@@ -17,8 +21,103 @@ from PyQt5 import uic, QtWidgets, QtCore
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-import requests
 
+class ThreadClass(QtCore.QThread):
+    progressBar_signal=QtCore.pyqtSignal(int)
+    statusBarMess_signal=QtCore.pyqtSignal(str)
+    statusBarCSS_signal=QtCore.pyqtSignal(str)
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent=parent)
+
+
+    oldProgress=0
+    thumbName=""
+    def setMp3Metadata(self, name: str):
+        #audiofile = eyed3.load(os.path.join(self.fordelNameLine.text(),name))
+        audiofile = eyed3.load(name)
+        audiofile.initTag(version=(2, 3, 0))
+
+        #audiofile.tag.artist = self.artistSongLine.text()
+        #audiofile.tag.title = self.titleSongLine.text()
+        #self.metadata_signal.emit()
+        audiofile.tag.artist = Ui.metadata[0]
+        audiofile.tag.title = Ui.metadata[1]
+        #thumbName=Ui.ytObj.title+'_thumb.png'
+        with open(self.thumbName, "rb") as cover_art:
+            audiofile.tag.images.set(
+                3, cover_art.read(), "image/png", u"cover")
+
+        audiofile.tag.save()
+
+    def progress_func(self, stream, chunk, bytes_remaining):
+        size = stream.filesize
+
+        progress = (float(abs(bytes_remaining-size)/size))*float(100)
+
+        if progress < 100:
+            self.statusBarMess_signal.emit("Downloading...")
+            while ThreadClass.oldProgress < progress:
+                ThreadClass.oldProgress = ThreadClass.oldProgress+1
+                time.sleep(0.01)
+                print(ThreadClass.oldProgress)
+                self.progressBar_signal.emit(ThreadClass.oldProgress)
+        else:
+            while ThreadClass.oldProgress < 101:
+                ThreadClass.oldProgress = ThreadClass.oldProgress+1
+                time.sleep(0.01)
+                self.progressBar_signal.emit(ThreadClass.oldProgress)
+            self.statusBarMess_signal.emit("Download complete! Converting...")
+
+
+    def mp4_to_mp3(self, mp4, mp3):     
+        mp4_without_frames = AudioFileClip(mp4)     
+        mp4_without_frames.write_audiofile(mp3)     
+        mp4_without_frames.close() 
+        # function call mp4_to_mp3("my_mp4_path.mp4", "audio.mp3")
+
+
+    def run(self):
+        ytObj=Ui.ytObj
+        self.thumbName=ytObj.title+"_thumb.jpg"
+        ThreadClass.oldProgress=0
+        self.progressBar_signal.emit(0)
+        ytObj.register_on_progress_callback(self.progress_func)
+        streamObj = ytObj.streams.filter(only_audio=True)
+        streamObj.first().download()  # use default_file name
+        self.statusBarMess_signal.emit("Download complete! Converting...")
+        self.statusBarCSS_signal.emit("greenYellow")
+        # for i in range(ThreadClass.oldProgress, 101):
+        #     self.progressBar_signal.emit.(i)
+
+        defaultFilename = streamObj.first().default_filename
+        outputName = defaultFilename[:-3]+"mp3"
+        
+        #print("----------Download complete! Converting...")
+
+        self.mp4_to_mp3(defaultFilename,outputName)
+        self.statusBarMess_signal.emit("Try to add metadata...")
+        print("-------Try to add metadata...")
+
+        self.setMp3Metadata(outputName)
+        self.statusBarMess_signal.emit("Converted! Check output fordel")
+        self.statusBarCSS_signal.emit("springGreen")
+ 
+        os.remove(ytObj.title+"_thumb.jpg")
+        os.remove(defaultFilename)  # delete mp4 file
+
+        if os.getcwd() != str(Ui.destinationFordel):
+            move(outputName, Ui.destinationFordel)
+     #   self.getSingleInfo=False #reset
+
+
+
+
+   
+
+    
+    def stop(self):
+        print('Stoping thread...')
+        self.terminate()
 
 class Ui(QtWidgets.QMainWindow):
     def __init__(self):
@@ -33,33 +132,38 @@ class Ui(QtWidgets.QMainWindow):
         self.getInfoButton.clicked.connect(self.getInfo)
         self.progressBar.setValue(0)
         self.statusBar().setStyleSheet("background-color : pink")
-        self.msg = QMessageBox()
+        self.statusBar().showMessage("Welcom!")
+        # self.msg = QMessageBox()
 
-        self.saveToDialog= QFileDialog()
+        self.saveToDialog = QFileDialog()
         self.toolButton.clicked.connect(self.saveTo)
         self.videoModeBt.clicked.connect(self.setMode)
         self.playlistModeBt.clicked.connect(self.setMode)
 
-        # ----------------------Test segment---------------------
+        # self.titleLine.setAlignment(QtCore.Qt.AlignLeft)
+
         # self.thumbPreviewLabel = self.findChild(
         #    QtWidgets.QLabel, 'thumbPreviewLabel')
-        # self.thumbPreviewLabel.setText("abc") #it's work!
-        # self.thumbPreviewLabel.setPixmap(QPixmap("python.png")) #it's work!
-        # QImage image()
-        # self.thumbPreviewLabel.setPicture(QPicture("python.png")
-        # self.insertLinkLabel.setText("avd")  #it's work!
-        # ----------------------Test segment---------------------
+   
 
         self.show()
 
-        # call-back funtion from here:
         # back-end function:
 
-    mode=0 # single video mode, mode=1: #playlist mode
+    mode = 0  # single video mode, mode=1: #playlist mode
+    ytObj=None
+    metadata=[]
+    destinationFordel=os.getcwd()
+    thumName=""
+    def getMetadata(self):
+        Ui.metadata.append(self.artistSongLine.text())
+        Ui.metadata.append(self.titleSongLine.text())
+
     def setMode(self):
-        if self.videoModeBt.isChecked()==True:
-            self.mode=0 #video mode
-            self.isVideoInfoObtained=False
+        self.statusBar().setStyleSheet("background-color : pink")
+        if self.videoModeBt.isChecked() == True:
+            self.mode = 0  # video mode
+            self.isVideoInfoObtained = False
             self.infoLabel.setText("Video Info")
             self.titleLabel.setText("Video title:")
             self.authorLabel.setText("Channel:")
@@ -67,8 +171,8 @@ class Ui(QtWidgets.QMainWindow):
             self.publishLabel.setText("Publish day:")
             self.statusBar().showMessage("------ Single Video MODE------")
         else:
-            self.mode=1 #playlist mode
-            self.isPlInfoObtained=False
+            self.mode = 1  # playlist mode
+            self.isPlInfoObtained = False
             self.infoLabel.setText("Playlist Info")
             #self.infoLabel.setStyleSheet("color: blue; background-color: yellow")
             self.titleLabel.setText("Playlist name:")
@@ -77,198 +181,284 @@ class Ui(QtWidgets.QMainWindow):
             self.publishLabel.setText("Playlist ID:")
             self.statusBar().showMessage("------ Playlist MODE------")
 
-
     isVideoInfoObtained = False
-    isPlInfoObtained=False
-    oldProgress=0
-    videoList=[]
-    def saveTo(self): #choose fordel to save file (file name is default)
-        #self.saveToDialog.setFileMode(QFileDialog.Directory)
-        fordelName=self.saveToDialog.getExistingDirectory() # make the dialog appear adn return fordel name
-        #self.saveToDialog.exec_() # nếu dùng dòng trên thì khỏi dòng này
-        self.fordelNameLine.setText(fordelName)
+    isPlInfoObtained = False
+    #isGetThumb=False
+    oldProgress = 0
+    videoList = []
 
-    def progress_func(self, stream, chunk, bytes_remaining):
-        size = stream.filesize
-        
-        progress = (float(abs(bytes_remaining-size)/size))*float(100)
-        
-        if progress<100:
-            self.statusBar().showMessage("Downloading...")
-            while self.oldProgress < progress:
-                self.oldProgress = self.oldProgress+1
-                time.sleep(0.01)
-                print(self.oldProgress)
-                self.progressBar.setValue(self.oldProgress)
-        else:
-            while self.oldProgress < 101:
-                self.oldProgress = self.oldProgress+1
-                time.sleep(0.01)
-                self.progressBar.setValue(self.oldProgress)
-            self.statusBar().showMessage("Download complete! Converting...")
+    def progressBar_func(self,i):
+        self.progressBar.setValue(i)
+
+    def setStatusBar(self,messenge):
+        self.statusBar().showMessage(str(messenge))
     
+    def setCSS(self, color):
+        self.statusBar().setStyleSheet("background-color : "+str(color))
+
+    def start_worker(self):
+        self.mythread=ThreadClass(parent=None)
+        self.mythread.start()
+        self.mythread.progressBar_signal.connect(self.progressBar_func)
+        self.mythread.statusBarMess_signal.connect(self.setStatusBar)
+        self.mythread.statusBarCSS_signal.connect(self.setCSS)
+    
+    def stop_worker(self):
+        self.mythread.stop()
+
+    def saveTo(self):  # choose fordel to save file (file name is default)
+        # self.saveToDialog.setFileMode(QFileDialog.Directory)
+        # make the dialog appear adn return fordel name
+        fordelName = self.saveToDialog.getExistingDirectory()
+        # self.saveToDialog.exec_() # nếu dùng dòng trên thì khỏi dòng này
+        self.fordelNameLine.setText(fordelName)
+        Ui.destinationFordel=fordelName
+
+ 
     def getYtObj(self):
         # retval=1
         # while (retval!=0):
         link = str(self.linkInputLine.text())
-        #     print('--'+link+'--')
-        #     if "www.youtube.com" not in link:
-        #         self.msg.setIcon(QMessageBox.Information)
-        
-        #         self.msg.setText("Link is invalid!")
-        #         self.msg.setInformativeText("Link can not empty\nLink not a video or playlist from Youtube.com")
-        #         self.msg.setWindowTitle(r"Oh! Something went wrong!")
-        #         self.msg.setStandardButtons(QMessageBox.Ok)
-        #         #self.msg.buttonClicked.connect(msgbtn)
-        #         retval = self.msg.exec_()
+
         #         print(retval)
         #         self.msg.hideEvent()
 
-
        # return YouTube(link,on_progress_callback=self.progress_func)
-        return YouTube(link)
+        Ui.ytObj=YouTube(link)
 
     def linkClear(self):
         self.linkInputLine.clear()
+        self.artistSongLine.setReadOnly(False)
+        self.titleSongLine.setReadOnly(False)
         self.statusBar().showMessage("Cleaned!")
-    
-    def isValidLink(self,link:str):
-        #if mode==0, =1
-        return True
-    
-    def getThumbnail(self,url:str):
-        responseObj = get(url)
-        # thumbName=ytObj.title+'_thumb.png'
-        with open("temp_thumbnail.png", "wb") as f:
-            f.write(responseObj.content)
+        self.statusBar().setStyleSheet("background-color : pink")
+    def showMessage(self):
+        self.msg = QMessageBox()
+        self.msg.setIcon(QMessageBox.Information)
+        self.msg.setText("LINK IS INVALID!!!")
+        self.msg.setInformativeText("""Check some info below:
+            Link can not empty.
+            Incorrect mode.
+            Link not a video or playlist from Youtube.com""")
+        self.msg.setWindowTitle(r"Oh! Something went wrong!")
+        self.msg.setStandardButtons(QMessageBox.Ok)
+        self.msg.setDefaultButton(QMessageBox.Ok)
+            #self.msg.buttonClicked.connect(msgbtn)
+        self.msg.exec_() #or msg.exec_()
+    def isValidLink(self, mode: int):
+
+        link=str(self.linkInputLine.text())
+        dk1= "www.youtube.com" in link
+        dk2= "watch" in link
+        dk3= "list" in link
+
+        if mode==0:
+            if dk1==dk2==True:
+                return True
+            else: 
+                self.showMessage()
+                return False
+        else:
+            if dk1==dk3==True:
+                return True
+            else: 
+                self.showMessage()
+                return False
+
+
+    def getThumbnail(self, url: str):
+        thumbName=Ui.ytObj.title+'_thumb.png'
+        if os.path.isfile(thumbName[:-3]+"jpg")==False:
+            responseObj = get(url)
+            
+            with open(thumbName, "wb") as f:
+                f.write(responseObj.content)
+
+            img = Image.open(thumbName)
+            w, h = img.size
+
+            area = ((w-h)//2, 0, ((w-h)//2)+h, h)
+            #area = (320, 0, 960, 720)
+            cropped_img = img.crop(area)
+            #cropped_img.save("abcde.jpg",quality=50,optimize=True)
+            cropped_img.save(thumbName[:-3]+"jpg",optimize=True)
+            os.remove(thumbName)
 
     def getSingleInfo(self):
         self.progressBar.setValue(0)
-        ytObj = self.getYtObj()
-        
-        #bitrate=ytObj.streams.filter(only_audio=True).first().bitrate #return bit
-        self.titleLine.setText(ytObj.title)
-        self.viewLine.setText(str(ytObj.views))
-        self.authorLine.setText(ytObj.author)
+        self.getYtObj()
+
+        # bitrate=ytObj.streams.filter(only_audio=True).first().bitrate #return bit
+        self.titleLine.setText(Ui.ytObj.title)
+        self.viewLine.setText(str(Ui.ytObj.views))
+        self.authorLine.setText(Ui.ytObj.author)
         self.bitrateSongLine.setText("128kbps")
         #videoLen="{0} phút {1} giây" %(ytObj.length/60, ytObj.length%60)
-        videoLen = str(ytObj.length//60)+' phút ' + \
-            str(ytObj.length % 60)+' giây'
+        videoLen = str(Ui.ytObj.length//60)+' phút ' + \
+            str(Ui.ytObj.length % 60)+' giây'
         self.lengthLine.setText(str(videoLen))
-        self.publishLine.setText(str(ytObj.publish_date))
+        self.publishLine.setText(str(Ui.ytObj.publish_date))
 
-        self.getThumbnail(ytObj.thumbnail_url)
+        self.getThumbnail(Ui.ytObj.thumbnail_url)
 
-        self.thumbPreviewLabel.setPixmap(QPixmap("temp_thumbnail.png"))
+        self.thumbPreviewLabel.setPixmap(QPixmap(Ui.ytObj.title+"_thumb.jpg"))
 
         # Set temp Metadata:
-        title = ytObj.title
-        
+        title = Ui.ytObj.title
 
         if "-" in title:
             artist = title.split('-')
             if (" x " in artist[0]) | ("ft" in artist[0]):
-                songTitle=artist[1].strip()
-                artist=artist[0].strip()
-                
+                songTitle = artist[1].strip()
+                artist = artist[0].strip()
+
             elif (" x " in artist[1]) | ("ft" in artist[0]):
-                songTitle=artist[0].strip()
-                artist=artist[1].strip()
+                songTitle = artist[0].strip()
+                artist = artist[1].strip()
             else:
-                songTitle=artist[0].strip()
-                artist=artist[1].strip()
-                
+                songTitle = artist[0].strip()
+                artist = artist[1].strip()
+
         else:
+            songTitle = title
             artist = "Place holder title!"
-        
+
         self.artistSongLine.setText(artist)  # chuẩn hoá
         self.titleSongLine.setText(songTitle)
         # get all bitrate:
         #streamObj = ytObj.streams.filter(only_audio=True)
         # streamObj.get_audio_only().
-    
+
     def getPlaylistInfo(self):
-        playlistLink=str(self.linkInputLine.text())
-        isValid=self.isValidLink(playlistLink)
-        if (isValid==True):
-            playLObj=Playlist(playlistLink)
-            self.videoList=list(playLObj.videos)
-            self.titleLine.setText(playLObj.title)
-            self.viewLine.setText(str(playLObj.views))
-            self.authorLine.setText(playLObj.owner)
-            self.lengthLine.setText(str(playLObj.length))
-            #self.publishLine.setText(str(playLObj.last_updated.month))\
-            self.publishLine.setText(playLObj.playlist_id)
+        playlistLink = str(self.linkInputLine.text())
 
-    
+        playLObj = Playlist(playlistLink)
+        self.videoList = list(playLObj.videos)
+        self.titleLine.setText(playLObj.title)
+        self.viewLine.setText(str(playLObj.views))
+        self.authorLine.setText(playLObj.owner)
+        self.lengthLine.setText(str(playLObj.length))
+            # self.publishLine.setText(str(playLObj.last_updated.month))\
+        self.publishLine.setText(playLObj.playlist_id)
+
     def getInfo(self):
-        if self.mode==0:
-            self.getSingleInfo()
+        self.statusBar().setStyleSheet("background-color : pink")
+        self.artistSongLine.setReadOnly(False)
+        self.titleSongLine.setReadOnly(False)
+        if self.mode == 0:
+            if self.isValidLink(0)==True:
+                self.getSingleInfo()
+                self.statusBar().showMessage("Video info has been obtained!")
         else:
-            self.getPlaylistInfo()
+            if self.isValidLink(1)==True:
+                self.getPlaylistInfo()
+                self.statusBar().showMessage("Playlist info has been obtained!")
 
-        self.statusBar().showMessage("Info has been obtained!")
 
-    def setMp3Metadata(self, name: str):
-        #audiofile = eyed3.load(os.path.join(self.fordelNameLine.text(),name))
-        audiofile = eyed3.load(name)
-        audiofile.initTag(version=(2, 3, 0))
+  
+    def singleDownload(self):
+        self.getMetadata()
+        self.artistSongLine.setReadOnly(True)
+        self.titleSongLine.setReadOnly(True)
+        self.start_worker()
 
-        audiofile.tag.artist = self.artistSongLine.text()
-        audiofile.tag.title = self.titleSongLine.text()
+    # def singleDownload(self, ytObj: YouTube):
+    #     self.progressBar.setValue(0)
+    #     self.oldProgress = 0
+    #     #ytObj = self.getYtObj()
+    #     ytObj.register_on_progress_callback(self.progress_func)
+    #     streamObj = ytObj.streams.filter(only_audio=True)
+    #     #does download method will make GUI not responding?  Yes, tested!
+    #     streamObj.first().download()  # use default_file name
 
-        with open("temp_thumbnail.png", "rb") as cover_art:
-            audiofile.tag.images.set(
-                3, cover_art.read(), "image/png", u"cover")
+    #     for i in range(self.oldProgress, 101):
+    #         self.progressBar.setValue(i)
 
-        audiofile.tag.save()
-   
-    def singleDownload(self,ytObj: YouTube):
-        self.progressBar.setValue(0)
-        #ytObj = self.getYtObj()
-        ytObj.register_on_progress_callback(self.progress_func)
-        streamObj = ytObj.streams.filter(only_audio=True)
-        streamObj.first().download()  # use default_file name
-        defaultFilename = streamObj.first().default_filename
-        outputName = defaultFilename[:-3]+"mp3"
+    #     defaultFilename = streamObj.first().default_filename
+    #     outputName = defaultFilename[:-3]+"mp3"
 
-        # 	ffmpeg -i input.mp4 output.mp3
-        #subprocess.run(["ffmpeg", "-i", defaultFilename, os.path.join(self.fordelNameLine.text(),outputName)])
-        #p1=subprocess.run(["ffmpeg", "-i", defaultFilename, outputName])
-        p1=subprocess.Popen(["ffmpeg", "-i", defaultFilename, outputName])
-        p1.wait() #make progress 1 wait
+    #     # 	ffmpeg -i input.mp4 output.mp3
+    #     #subprocess.run(["ffmpeg", "-i", defaultFilename, os.path.join(self.fordelNameLine.text(),outputName)])
+    #     #p1=subprocess.run(["ffmpeg", "-i", defaultFilename, outputName])
 
-        # streamObj.first().bitrate
-        self.getThumbnail(ytObj.thumbnail_url)
-        # Set Metadata:
-        self.setMp3Metadata(outputName)
-        self.statusBar().showMessage("Converted! Check output fordel")
-        os.remove("temp_thumbnail.png")
-        os.remove(defaultFilename)  # delete mp4 file
+    #     self.statusBar().showMessage("Download complete! Converting...")
+    #     print("----------Download complete! Converting...")
 
-        if os.getcwd()!=str(self.fordelNameLine.text()): 
-            move(outputName,self.fordelNameLine.text())
+    #     #p1=subprocess.Popen(["ffmpeg","-loglevel", "panic", "-i", defaultFilename, outputName],start_new_session=True)
+    #     # p1.wait() #make progress 1 wait
+
+    #     #cmdStr="ffmpeg -loglevel panic -i {} {}".format(defaultFilename,outputName)
+    #     #cmdStr = 'ffmpeg -loglevel panic -i "{}" "{}"'.format(defaultFilename, outputName)
+    #     # return code=0 mean exit normal, otherwise return 1
+    #     #returnCode = os.system(cmdStr)
+
+    #     #self.mp4_to_mp3(defaultFilename,outputName)
+
+    #     self.getThumbnail(ytObj.thumbnail_url)
+    #     # Set Metadata:
+    #     self.statusBar().showMessage("Try to add metadata...")
+    #     print("-------Try to add metadata...")
+
+    #     # while p1.poll() is None:
+    #     #     print('----------Still converting...')
+    #     #     time.sleep(0.5)
+
+    #     # found = False
+    #     # while found == False:
+    #     #     time.sleep(0.5)
+    #     #     print("Finding...")
+    #     #     if os.path.isfile(outputName):
+    #     #         fSize = os.path.getsize(outputName)
+    #     #         if fSize:
+    #     #             print("File size=", (fSize//1024)//1024, "Mb")
+    #     #             found = True
+
+    #     # while True:
+    #     #     time.sleep(0.5)
+    #     #     if os.path.isfile(outputName):
+    #     #         if os.path.getsize(outputName)>1024:
+    #     #             self.setMp3Metadata(outputName)
+    #     #             print("\n--------Found\n")
+    #     #             break
+
+    #     #time.sleep(10)  
+    #     #print("------------Time out--------")
+
+    #     self.setMp3Metadata(outputName)
+    #     self.statusBar().showMessage("Converted! Check output fordel")
+    #     self.statusBar().setStyleSheet("background-color : green")
+    #     os.remove("temp_thumbnail.png")
+    #     os.remove(defaultFilename)  # delete mp4 file
+
+    #     if os.getcwd() != str(self.fordelNameLine.text()):
+    #         move(outputName, self.fordelNameLine.text())
+    #     self.getSingleInfo=False #reset
 
     def batchDownload(self):
         for ytObj in self.videoList:
-            #print(ytObj.title)
+            # print(ytObj.title)
             self.statusBar().showMessage("'"+ytObj.title+r"' is downloading...")
-            self.singleDownload(ytObj)
-            time.sleep(0.5)
+            Ui.ytObj=ytObj
+            self.getThumbnail(ytObj.thumbnail_url)
+            self.singleDownload()
+            #time.sleep(0.5)
+            #self.refresh()
 
     def downloader(self):
-        #self.getInfo()
-        if self.mode==0: #single video
-            if self.isVideoInfoObtained==False:
-                self.getSingleInfo()
-                self.isVideoInfoObtained=True
-            ytObj=self.getYtObj()
-            self.singleDownload(ytObj)
-        else : #mode=1 playlist
-            if self.isPlInfoObtained==False:
-                self.getPlaylistInfo()
-                self.isPlInfoObtained=True
-            self.batchDownload()
+        self.statusBar().showMessage("-----Wait a second....")
+        if self.mode == 0:  # single video
+            if self.isValidLink(0)==True:
+                if self.isVideoInfoObtained == False:
+                    self.getSingleInfo()
+                    self.isVideoInfoObtained = True
+                    self.getYtObj()
+                self.singleDownload()
+        else:  # mode=1 playlist
+            if self.isValidLink(1)==True:
+                if self.isPlInfoObtained == False:
+                    self.getPlaylistInfo()
+                    self.isPlInfoObtained = True
+                self.batchDownload()
 
 
 if __name__ == "__main__":
@@ -282,4 +472,5 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     window = Ui()
     # app.setStyle("fusion")
+    
     app.exec_()
