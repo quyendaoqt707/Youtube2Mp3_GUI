@@ -42,6 +42,7 @@ class ThreadClass(QtCore.QThread):
         #self.metadata_signal.emit()
         audiofile.tag.artist = Ui.metadata[0]
         audiofile.tag.title = Ui.metadata[1]
+        audiofile.tag.comments.set("source:"+str(Ui.ytObj.watch_url))
         #thumbName=Ui.ytObj.title+'_thumb.png'
         with open(self.thumbName, "rb") as cover_art:
             audiofile.tag.images.set(
@@ -78,18 +79,27 @@ class ThreadClass(QtCore.QThread):
 
     def run(self):
         ytObj=Ui.ytObj
-        self.thumbName=ytObj.title+"_thumb.jpg"
+        self.thumbName=str(Ui.ytObj.views)+'_thumb.jpg'
+
         ThreadClass.oldProgress=0
         self.progressBar_signal.emit(0)
         ytObj.register_on_progress_callback(self.progress_func)
+        #Option1: Get hightest bitrate audio 160kbps:
+        # streamObj=ytObj.streams.get_by_itag(251)
+        # streamObj.download()
+
+        #Option2: Get 128kbps:  uncomment 2 line below
         streamObj = ytObj.streams.filter(only_audio=True)
         streamObj.first().download()  # use default_file name
+
+
         self.statusBarMess_signal.emit("Download complete! Converting...")
         self.statusBarCSS_signal.emit("greenYellow")
         # for i in range(ThreadClass.oldProgress, 101):
         #     self.progressBar_signal.emit.(i)
 
         defaultFilename = streamObj.first().default_filename
+        #defaultFilename = streamObj.default_filename #for option1
         outputName = defaultFilename[:-3]+"mp3"
         
         #print("----------Download complete! Converting...")
@@ -102,7 +112,7 @@ class ThreadClass(QtCore.QThread):
         self.statusBarMess_signal.emit("Converted! Check output fordel")
         self.statusBarCSS_signal.emit("springGreen")
  
-        os.remove(ytObj.title+"_thumb.jpg")
+        os.remove(str(ytObj.views)+"_thumb.jpg")
         os.remove(defaultFilename)  # delete mp4 file
 
         if os.getcwd() != str(Ui.destinationFordel):
@@ -130,9 +140,10 @@ class Ui(QtWidgets.QMainWindow):
         self.clearButton.clicked.connect(self.linkClear)
         self.downloadButton.clicked.connect(self.downloader)
         self.getInfoButton.clicked.connect(self.getInfo)
+        self.linkInputLine.textChanged.connect(lambda x : self.linkChanged(True))
         self.progressBar.setValue(0)
         self.statusBar().setStyleSheet("background-color : pink")
-        self.statusBar().showMessage("Welcom!")
+        self.statusBar().showMessage("Welcome!")
         # self.msg = QMessageBox()
 
         self.saveToDialog = QFileDialog()
@@ -152,10 +163,16 @@ class Ui(QtWidgets.QMainWindow):
 
     mode = 0  # single video mode, mode=1: #playlist mode
     ytObj=None
+    isLinkChanged=True
+
     metadata=[]
     destinationFordel=os.getcwd()
-    thumName=""
+    thumbName=""
+    def linkChanged(self, value):
+        Ui.isLinkChanged=value
+
     def getMetadata(self):
+        Ui.metadata.clear()
         Ui.metadata.append(self.artistSongLine.text())
         Ui.metadata.append(self.titleSongLine.text())
 
@@ -190,8 +207,8 @@ class Ui(QtWidgets.QMainWindow):
     def progressBar_func(self,i):
         self.progressBar.setValue(i)
 
-    def setStatusBar(self,messenge):
-        self.statusBar().showMessage(str(messenge))
+    def setStatusBar(self,message):
+        self.statusBar().showMessage(str(message))
     
     def setCSS(self, color):
         self.statusBar().setStyleSheet("background-color : "+str(color))
@@ -267,22 +284,26 @@ class Ui(QtWidgets.QMainWindow):
 
 
     def getThumbnail(self, url: str):
-        thumbName=Ui.ytObj.title+'_thumb.png'
+        #thumbName=Ui.ytObj.title+'_thumb.png'
+        thumbName=str(Ui.ytObj.views)+'_thumb.png'
         if os.path.isfile(thumbName[:-3]+"jpg")==False:
             responseObj = get(url)
-            
-            with open(thumbName, "wb") as f:
-                f.write(responseObj.content)
+            #print("status_code=",responseObj.status_code)
+            if (responseObj.status_code>=400):
+                self.statusBar().showMessage("Oh! ... Can't get URL, check internet connection...")
+            else:
+                with open(thumbName, "wb") as f:
+                    f.write(responseObj.content)
 
-            img = Image.open(thumbName)
-            w, h = img.size
+                img = Image.open(thumbName)
+                w, h = img.size
 
-            area = ((w-h)//2, 0, ((w-h)//2)+h, h)
-            #area = (320, 0, 960, 720)
-            cropped_img = img.crop(area)
-            #cropped_img.save("abcde.jpg",quality=50,optimize=True)
-            cropped_img.save(thumbName[:-3]+"jpg",optimize=True)
-            os.remove(thumbName)
+                area = ((w-h)//2, 0, ((w-h)//2)+h, h)
+                #area = (320, 0, 960, 720)
+                cropped_img = img.crop(area)
+                #cropped_img.save("abcde.jpg",quality=50,optimize=True)
+                cropped_img.save(thumbName[:-3]+"jpg",optimize=True)
+                os.remove(thumbName)
 
     def getSingleInfo(self):
         self.progressBar.setValue(0)
@@ -292,7 +313,7 @@ class Ui(QtWidgets.QMainWindow):
         self.titleLine.setText(Ui.ytObj.title)
         self.viewLine.setText(str(Ui.ytObj.views))
         self.authorLine.setText(Ui.ytObj.author)
-        self.bitrateSongLine.setText("128kbps")
+        self.bitrateSongLine.setText("160kbps")
         #videoLen="{0} phút {1} giây" %(ytObj.length/60, ytObj.length%60)
         videoLen = str(Ui.ytObj.length//60)+' phút ' + \
             str(Ui.ytObj.length % 60)+' giây'
@@ -301,7 +322,7 @@ class Ui(QtWidgets.QMainWindow):
 
         self.getThumbnail(Ui.ytObj.thumbnail_url)
 
-        self.thumbPreviewLabel.setPixmap(QPixmap(Ui.ytObj.title+"_thumb.jpg"))
+        self.thumbPreviewLabel.setPixmap(QPixmap(str(Ui.ytObj.views)+"_thumb.jpg"))
 
         # Set temp Metadata:
         title = Ui.ytObj.title
@@ -343,17 +364,24 @@ class Ui(QtWidgets.QMainWindow):
 
     def getInfo(self):
         self.statusBar().setStyleSheet("background-color : pink")
-        self.artistSongLine.setReadOnly(False)
-        self.titleSongLine.setReadOnly(False)
-        if self.mode == 0:
-            if self.isValidLink(0)==True:
-                self.getSingleInfo()
-                self.statusBar().showMessage("Video info has been obtained!")
+        if Ui.isLinkChanged==True:
+            self.artistSongLine.setReadOnly(False)
+            self.titleSongLine.setReadOnly(False)
+            if self.mode == 0:
+                if self.isValidLink(0)==True:
+                    if Ui.isVideoInfoObtained==False:
+                        self.getSingleInfo()
+                    self.statusBar().showMessage("Video info has been obtained!")
+                #Ui.isVideoInfoObtained=False
+            else:
+                if self.isValidLink(1)==True:
+                    if Ui.isPlInfoObtained==False:
+                        self.getPlaylistInfo()
+                    self.statusBar().showMessage("Playlist info has been obtained!")
+                #Ui.isPlInfoObtained=False
+            Ui.isLinkChanged=False
         else:
-            if self.isValidLink(1)==True:
-                self.getPlaylistInfo()
-                self.statusBar().showMessage("Playlist info has been obtained!")
-
+            self.statusBar().showMessage("Please change link address!")
 
   
     def singleDownload(self):
@@ -453,12 +481,17 @@ class Ui(QtWidgets.QMainWindow):
                     self.isVideoInfoObtained = True
                     self.getYtObj()
                 self.singleDownload()
+            Ui.isVideoInfoObtained=False
         else:  # mode=1 playlist
             if self.isValidLink(1)==True:
                 if self.isPlInfoObtained == False:
                     self.getPlaylistInfo()
                     self.isPlInfoObtained = True
                 self.batchDownload()
+
+            Ui.isPlInfoObtained=False
+
+
 
 
 if __name__ == "__main__":
