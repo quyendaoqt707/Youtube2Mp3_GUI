@@ -1,7 +1,8 @@
 #from logging import setLoggerClass
-from logging import fatal
+from datetime import datetime
+import logging
 import os
-import subprocess
+#import subprocess
 from pytube import YouTube
 from pytube import Playlist
 import eyed3
@@ -33,22 +34,25 @@ class ThreadClass(QtCore.QThread):
     oldProgress=0
     thumbName=""
     def setMp3Metadata(self, name: str):
-        #audiofile = eyed3.load(os.path.join(self.fordelNameLine.text(),name))
-        audiofile = eyed3.load(name)
-        audiofile.initTag(version=(2, 3, 0))
+        try:
+            #audiofile = eyed3.load(os.path.join(self.fordelNameLine.text(),name))
+            audiofile = eyed3.load(name)
+            audiofile.initTag(version=(2, 3, 0))
 
-        #audiofile.tag.artist = self.artistSongLine.text()
-        #audiofile.tag.title = self.titleSongLine.text()
-        #self.metadata_signal.emit()
-        audiofile.tag.artist = Ui.metadata[0]
-        audiofile.tag.title = Ui.metadata[1]
-        audiofile.tag.comments.set("source:"+str(Ui.ytObj.watch_url))
-        #thumbName=Ui.ytObj.title+'_thumb.png'
-        with open(self.thumbName, "rb") as cover_art:
-            audiofile.tag.images.set(
-                3, cover_art.read(), "image/png", u"cover")
+            #audiofile.tag.artist = self.artistSongLine.text()
+            #audiofile.tag.title = self.titleSongLine.text()
+            #self.metadata_signal.emit()
+            audiofile.tag.artist = Ui.metadata[0]
+            audiofile.tag.title = Ui.metadata[1]
+            audiofile.tag.comments.set("source:"+str(Ui.ytObj.watch_url))
+            #thumbName=Ui.ytObj.title+'_thumb.png'
+            with open(self.thumbName, "rb") as cover_art:
+                audiofile.tag.images.set(
+                    3, cover_art.read(), "image/png", u"cover")
 
-        audiofile.tag.save()
+            audiofile.tag.save()
+        except Exception as log:
+            logging.info("ERROR: setMp3Metadata\n"+log)
 
     def progress_func(self, stream, chunk, bytes_remaining):
         size = stream.filesize
@@ -70,17 +74,20 @@ class ThreadClass(QtCore.QThread):
             self.statusBarMess_signal.emit("Download complete! Converting...")
 
 
-    def mp4_to_mp3(self, mp4, mp3):     
-        mp4_without_frames = AudioFileClip(mp4)     
-        mp4_without_frames.write_audiofile(mp3)     
-        mp4_without_frames.close() 
+    def mp4_to_mp3(self, mp4, mp3):
+        try:
+            mp4_without_frames = AudioFileClip(mp4)     
+            mp4_without_frames.write_audiofile(mp3)     
+            mp4_without_frames.close() 
+        except Exception as log:
+            logging.info("EXCEPT at mp4_to_mp3:\n"+log)
         # function call mp4_to_mp3("my_mp4_path.mp4", "audio.mp3")
 
 
     def run(self):
         ytObj=Ui.ytObj
-        self.thumbName=str(Ui.ytObj.views)+'_thumb.jpg'
-
+        
+        self.thumbName="temp_thumb.jpg"
         ThreadClass.oldProgress=0
         self.progressBar_signal.emit(0)
         ytObj.register_on_progress_callback(self.progress_func)
@@ -112,7 +119,7 @@ class ThreadClass(QtCore.QThread):
         self.statusBarMess_signal.emit("Converted! Check output fordel")
         self.statusBarCSS_signal.emit("springGreen")
  
-        os.remove(str(ytObj.views)+"_thumb.jpg")
+        os.remove("temp_thumb.jpg")
         os.remove(defaultFilename)  # delete mp4 file
 
         if os.getcwd() != str(Ui.destinationFordel):
@@ -242,6 +249,7 @@ class Ui(QtWidgets.QMainWindow):
 
        # return YouTube(link,on_progress_callback=self.progress_func)
         Ui.ytObj=YouTube(link)
+        #print("YT url=",Ui.ytObj.title)
 
     def linkClear(self):
         self.linkInputLine.clear()
@@ -249,43 +257,54 @@ class Ui(QtWidgets.QMainWindow):
         self.titleSongLine.setReadOnly(False)
         self.statusBar().showMessage("Cleaned!")
         self.statusBar().setStyleSheet("background-color : pink")
-    def showMessage(self):
+    def showMessage(self, mainText, info):
         self.msg = QMessageBox()
         self.msg.setIcon(QMessageBox.Information)
-        self.msg.setText("LINK IS INVALID!!!")
-        self.msg.setInformativeText("""Check some info below:
-            Link can not empty.
-            Incorrect mode.
-            Link not a video or playlist from Youtube.com""")
+        self.msg.setText(mainText)
+        self.msg.setInformativeText(info)
+        # self.msg.setText("LINK IS INVALID!!!")
+        # self.msg.setInformativeText("""Check some info below:
+        #     Link can not empty.
+        #     Incorrect mode.
+        #     Link not a video or playlist from Youtube.com""")
         self.msg.setWindowTitle(r"Oh! Something went wrong!")
         self.msg.setStandardButtons(QMessageBox.Ok)
         self.msg.setDefaultButton(QMessageBox.Ok)
             #self.msg.buttonClicked.connect(msgbtn)
         self.msg.exec_() #or msg.exec_()
+        self.statusBar().showMessage("")
     def isValidLink(self, mode: int):
 
         link=str(self.linkInputLine.text())
         dk1= "www.youtube.com" in link
         dk2= "watch" in link
         dk3= "list" in link
-
+        mainText="LINK IS INVALID!!!"
+        info="""Check some info below:
+             Link can not empty.
+             Incorrect mode.
+             Link not a video or playlist from Youtube.com
+        """
         if mode==0:
             if dk1==dk2==True:
                 return True
             else: 
-                self.showMessage()
+                self.showMessage(mainText, info)
                 return False
         else:
             if dk1==dk3==True:
                 return True
             else: 
-                self.showMessage()
+                self.showMessage(mainText, info)
                 return False
 
 
     def getThumbnail(self, url: str):
         #thumbName=Ui.ytObj.title+'_thumb.png'
-        thumbName=str(Ui.ytObj.views)+'_thumb.png'
+        #https://i.ytimg.com/vi/10ATKnZLg9c/maxresdefault.jpg
+        #https://i.ytimg.com/vi/10ATKnZLg9c/sddefault.jpg
+        url=url.replace("sddefault","maxresdefault")
+        thumbName='temp_thumb.png'
         if os.path.isfile(thumbName[:-3]+"jpg")==False:
             responseObj = get(url)
             #print("status_code=",responseObj.status_code)
@@ -297,12 +316,21 @@ class Ui(QtWidgets.QMainWindow):
 
                 img = Image.open(thumbName)
                 w, h = img.size
-
-                area = ((w-h)//2, 0, ((w-h)//2)+h, h)
-                #area = (320, 0, 960, 720)
-                cropped_img = img.crop(area)
-                #cropped_img.save("abcde.jpg",quality=50,optimize=True)
-                cropped_img.save(thumbName[:-3]+"jpg",optimize=True)
+                #Check if real-thumbnail is square or rectangle
+                pix =img.load()
+                lpixel=pix[0,h//2]
+                rpixel=pix[w-1,(h//2)-1]
+                #print(lpixel, rpixel)
+                if lpixel[0]<15 and lpixel[1]<15 and lpixel[2]<15 :
+                    if rpixel[0]<15 and rpixel[1]<15 and rpixel[2]<15:
+                        area = ((w-h)//2, 0, ((w-h)//2)+h, h)
+                        #area = (320, 0, 960, 720)
+                        cropped_img = img.crop(area)
+                        #cropped_img.save("abcde.jpg",quality=50,optimize=True)
+                        cropped_img.save(thumbName[:-3]+"jpg")
+                else:
+                    resized_Img=img.resize((h,h))
+                    resized_Img.save(thumbName[:-3]+"jpg")
                 os.remove(thumbName)
 
     def getSingleInfo(self):
@@ -313,7 +341,7 @@ class Ui(QtWidgets.QMainWindow):
         self.titleLine.setText(Ui.ytObj.title)
         self.viewLine.setText(str(Ui.ytObj.views))
         self.authorLine.setText(Ui.ytObj.author)
-        self.bitrateSongLine.setText("160kbps")
+        self.bitrateSongLine.setText("160kbps (maximum)")
         #videoLen="{0} phút {1} giây" %(ytObj.length/60, ytObj.length%60)
         videoLen = str(Ui.ytObj.length//60)+' phút ' + \
             str(Ui.ytObj.length % 60)+' giây'
@@ -322,7 +350,7 @@ class Ui(QtWidgets.QMainWindow):
 
         self.getThumbnail(Ui.ytObj.thumbnail_url)
 
-        self.thumbPreviewLabel.setPixmap(QPixmap(str(Ui.ytObj.views)+"_thumb.jpg"))
+        self.thumbPreviewLabel.setPixmap(QPixmap("temp_thumb.jpg"))
 
         # Set temp Metadata:
         title = Ui.ytObj.title
@@ -342,10 +370,12 @@ class Ui(QtWidgets.QMainWindow):
 
         else:
             songTitle = title
+            self.showMessage("Input Artist for song!", "")
             artist = "Place holder title!"
 
         self.artistSongLine.setText(artist)  # chuẩn hoá
         self.titleSongLine.setText(songTitle)
+        Ui.isVideoInfoObtained=True
         # get all bitrate:
         #streamObj = ytObj.streams.filter(only_audio=True)
         # streamObj.get_audio_only().
@@ -364,6 +394,7 @@ class Ui(QtWidgets.QMainWindow):
 
     def getInfo(self):
         self.statusBar().setStyleSheet("background-color : pink")
+        self.statusBar().showMessage("")
         if Ui.isLinkChanged==True:
             self.artistSongLine.setReadOnly(False)
             self.titleSongLine.setReadOnly(False)
@@ -491,7 +522,11 @@ class Ui(QtWidgets.QMainWindow):
 
             Ui.isPlInfoObtained=False
 
-
+def closeEvent():  #user define function
+    if os.path.isfile("temp_thumb.jpg")==True:
+        os.remove("temp_thumb.jpg")
+    #print("Close button pressed!")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
@@ -503,7 +538,13 @@ if __name__ == "__main__":
         QtWidgets.QApplication.setAttribute(
             QtCore.Qt.AA_UseHighDpiPixmaps, True)
     app = QtWidgets.QApplication(sys.argv)
+    app.aboutToQuit.connect(closeEvent)
     window = Ui()
     # app.setStyle("fusion")
-    
+            #Set logging mode:
+    # if Ui.issaveLog==True:
+    # current_time = datetime.now().strftime("%H-%M-%S")
+    # #print(current_time)
+    # logFileName="Log\\"+current_time+"_session.log"
+    # logging.basicConfig(filename=logFileName,format='%(asctime)s - %(message)s', level=logging.INFO,encoding='utf-8')
     app.exec_()
