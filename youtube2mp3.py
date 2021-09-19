@@ -255,6 +255,8 @@ class Ui(QtWidgets.QMainWindow):
         self.linkInputLine.clear()
         self.artistSongLine.setReadOnly(False)
         self.titleSongLine.setReadOnly(False)
+        if os.path.isfile("temp_thumb.jpg")==True:
+            os.remove("temp_thumb.jpg")
         self.statusBar().showMessage("Cleaned!")
         self.statusBar().setStyleSheet("background-color : pink")
     def showMessage(self, mainText, info):
@@ -309,29 +311,39 @@ class Ui(QtWidgets.QMainWindow):
             responseObj = get(url)
             #print("status_code=",responseObj.status_code)
             if (responseObj.status_code>=400):
-                self.statusBar().showMessage("Oh! ... Can't get URL, check internet connection...")
-            else:
-                with open(thumbName, "wb") as f:
-                    f.write(responseObj.content)
+                # maxresdefault failed!
+                url=url.replace("maxresdefault","sddefault")
+                responseObj = get(url)
+                if (responseObj.status_code>=400):
+                    self.statusBar().showMessage("Oh! ... Can't get URL, check internet connection...")
+                    return False
+ 
+            with open(thumbName, "wb") as f:
+                f.write(responseObj.content)
 
-                img = Image.open(thumbName)
-                w, h = img.size
-                #Check if real-thumbnail is square or rectangle
-                pix =img.load()
-                lpixel=pix[0,h//2]
-                rpixel=pix[w-1,(h//2)-1]
-                #print(lpixel, rpixel)
-                if lpixel[0]<15 and lpixel[1]<15 and lpixel[2]<15 :
-                    if rpixel[0]<15 and rpixel[1]<15 and rpixel[2]<15:
-                        area = ((w-h)//2, 0, ((w-h)//2)+h, h)
-                        #area = (320, 0, 960, 720)
-                        cropped_img = img.crop(area)
-                        #cropped_img.save("abcde.jpg",quality=50,optimize=True)
-                        cropped_img.save(thumbName[:-3]+"jpg")
-                else:
-                    resized_Img=img.resize((h,h))
-                    resized_Img.save(thumbName[:-3]+"jpg")
-                os.remove(thumbName)
+            img = Image.open(thumbName)
+            w, h = img.size
+            #Check if real-thumbnail is square or rectangle
+            pix =img.load()
+            lpixel=pix[0,h//2]
+            rpixel=pix[w-1,(h//2)-1]
+            #print(lpixel, rpixel)
+            if lpixel[0]<15 and lpixel[1]<15 and lpixel[2]<15 :
+                if rpixel[0]<15 and rpixel[1]<15 and rpixel[2]<15:
+                    area = ((w-h)//2, 0, ((w-h)//2)+h, h)
+                    #area = (320, 0, 960, 720)
+                    cropped_img = img.crop(area)
+                    #cropped_img.save("abcde.jpg",quality=50,optimize=True)
+                    cropped_img.save(thumbName[:-3]+"jpg")
+            else:
+                resized_Img=img.resize((h,h))
+                resized_Img.save(thumbName[:-3]+"jpg")
+            os.remove(thumbName)
+            return True
+        else:
+            self.statusBar().showMessage("Thumbnail already exists!")
+            return True
+
 
     def getSingleInfo(self):
         self.progressBar.setValue(0)
@@ -348,37 +360,39 @@ class Ui(QtWidgets.QMainWindow):
         self.lengthLine.setText(str(videoLen))
         self.publishLine.setText(str(Ui.ytObj.publish_date))
 
-        self.getThumbnail(Ui.ytObj.thumbnail_url)
+        
+        isSuccess=self.getThumbnail(Ui.ytObj.thumbnail_url)
+        if isSuccess==True:
+            self.thumbPreviewLabel.setPixmap(QPixmap("temp_thumb.jpg"))
+            # Set temp Metadata:
+            title = Ui.ytObj.title
 
-        self.thumbPreviewLabel.setPixmap(QPixmap("temp_thumb.jpg"))
+            if "-" in title:
+                artist = title.split('-')
+                if (" x " in artist[0]) | ("ft" in artist[0]):
+                    songTitle = artist[1].strip()
+                    artist = artist[0].strip()
 
-        # Set temp Metadata:
-        title = Ui.ytObj.title
+                elif (" x " in artist[1]) | ("ft" in artist[0]):
+                    songTitle = artist[0].strip()
+                    artist = artist[1].strip()
+                else:
+                    songTitle = artist[0].strip()
+                    artist = artist[1].strip()
 
-        if "-" in title:
-            artist = title.split('-')
-            if (" x " in artist[0]) | ("ft" in artist[0]):
-                songTitle = artist[1].strip()
-                artist = artist[0].strip()
-
-            elif (" x " in artist[1]) | ("ft" in artist[0]):
-                songTitle = artist[0].strip()
-                artist = artist[1].strip()
             else:
-                songTitle = artist[0].strip()
-                artist = artist[1].strip()
+                songTitle = title
+                self.showMessage("Input Artist for song!", "")
+                artist = "Place holder title!"
 
+            self.artistSongLine.setText(artist)  # chuẩn hoá
+            self.titleSongLine.setText(songTitle)
+            Ui.isVideoInfoObtained=True
+            # get all bitrate:
+            #streamObj = ytObj.streams.filter(only_audio=True)
+            # streamObj.get_audio_only().
         else:
-            songTitle = title
-            self.showMessage("Input Artist for song!", "")
-            artist = "Place holder title!"
-
-        self.artistSongLine.setText(artist)  # chuẩn hoá
-        self.titleSongLine.setText(songTitle)
-        Ui.isVideoInfoObtained=True
-        # get all bitrate:
-        #streamObj = ytObj.streams.filter(only_audio=True)
-        # streamObj.get_audio_only().
+            self.showMessage("Get thumbnai failed!","Check internet connection!")
 
     def getPlaylistInfo(self):
         playlistLink = str(self.linkInputLine.text())
